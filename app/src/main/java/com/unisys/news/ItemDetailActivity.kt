@@ -2,9 +2,10 @@ package com.unisys.news
 
 import android.content.Intent
 import android.os.Bundle
-import com.google.android.material.snackbar.Snackbar
-import androidx.appcompat.app.AppCompatActivity
 import android.view.MenuItem
+import androidx.appcompat.app.AppCompatActivity
+import com.unisys.news.news.repo.dto.Article
+import com.unisys.news.news.repo.local.DBConstant
 import kotlinx.android.synthetic.main.activity_item_detail.*
 
 /**
@@ -20,11 +21,6 @@ class ItemDetailActivity : AppCompatActivity() {
         setContentView(R.layout.activity_item_detail)
         setSupportActionBar(detail_toolbar)
 
-        fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own detail action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null).show()
-        }
-
         // Show the Up button in the action bar.
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
@@ -38,14 +34,16 @@ class ItemDetailActivity : AppCompatActivity() {
         // http://developer.android.com/guide/components/fragments.html
         //
         if (savedInstanceState == null) {
-            // Create the detail fragment and add it to the activity
-            // using a fragment transaction.
+            val item: Article = intent.getParcelableExtra(DBConstant.NEWS)
+
+//            Picasso
+//                .get()
+//                .load(item?.urlToImage)
+//                .into(backdrop)
+
             val fragment = ItemDetailFragment().apply {
                 arguments = Bundle().apply {
-                    putString(
-                        ItemDetailFragment.ARG_ITEM_ID,
-                        intent.getStringExtra(ItemDetailFragment.ARG_ITEM_ID)
-                    )
+                    putParcelable(DBConstant.NEWS, item)
                 }
             }
 
@@ -62,8 +60,6 @@ class ItemDetailActivity : AppCompatActivity() {
                 // activity, the Up button is shown. For
                 // more details, see the Navigation pattern on Android Design:
                 //
-                // http://developer.android.com/design/patterns/navigation.html#up-vs-back
-
                 navigateUpTo(Intent(this, ItemListActivity::class.java))
                 true
             }

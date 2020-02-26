@@ -23,6 +23,15 @@ public abstract class BasePresenter<P extends MvpView> implements MvpPresenter<P
     }
 
     @Override
+    public void onStart() {
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+
+    }
+
+    @Override
     public void onDetach() {
         if (viewRef != null) {
             viewRef.clear();

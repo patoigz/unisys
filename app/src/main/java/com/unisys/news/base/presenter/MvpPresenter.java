@@ -25,4 +25,7 @@ public interface MvpPresenter<P extends MvpView> {
      */
     void onDetach();
 
+    void onStart();
+
+    void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults);
 }

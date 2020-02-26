@@ -1,14 +1,40 @@
 package com.unisys.news
 
+import android.Manifest
+import android.app.ProgressDialog
+import android.app.SearchManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.snackbar.Snackbar
+import android.util.Log
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import androidx.appcompat.widget.SearchView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.coroutineScope
 import com.unisys.news.base.view.BaseActivity
+import com.unisys.news.news.adapter.SimpleItemRecyclerViewAdapter
 import com.unisys.news.news.model.NewsResponse
 import com.unisys.news.news.presenter.NewsPresenter
+import com.unisys.news.news.presenter.NewsPresenterImpl
+import com.unisys.news.news.repo.NewsRepo
+import com.unisys.news.news.repo.NewsRepoImpl
+import com.unisys.news.news.repo.local.AppDatabase
+import com.unisys.news.news.repo.local.NewsLocalRepo
+import com.unisys.news.news.repo.local.NewsLocalRepoImpl
+import com.unisys.news.news.repo.remote.NewsRemoteRepo
+import com.unisys.news.news.repo.remote.NewsRemoteRepoImpl
 import com.unisys.news.news.view.NewsView
+import io.reactivex.android.schedulers.AndroidSchedulers
+import kotlinx.android.synthetic.main.activity_item_detail.item_detail_container
 import kotlinx.android.synthetic.main.activity_item_list.*
 import kotlinx.android.synthetic.main.item_list.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * An activity representing a list of Pings. This activity
@@ -22,6 +48,8 @@ class ItemListActivity : BaseActivity<NewsPresenter?>(), NewsView {
 
     companion object {
         private val TAG = ItemListActivity::class.java.simpleName
+
+        private val INTERNET_REQUEST_CODE = 101
     }
 
     /**
@@ -37,11 +65,6 @@ class ItemListActivity : BaseActivity<NewsPresenter?>(), NewsView {
         setSupportActionBar(toolbar)
         toolbar.title = title
 
-        fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null).show()
-        }
-
         if (item_detail_container != null) {
             // The detail container view will be present only in the
             // large-screen layouts (res/values-w900dp).
@@ -50,30 +73,117 @@ class ItemListActivity : BaseActivity<NewsPresenter?>(), NewsView {
             twoPane = true
         }
 
-        setupRecyclerView(item_list)
+        presenter.getNews
     }
 
-    private fun setupRecyclerView(recyclerView: RecyclerView) {
-//        recyclerView.adapter = SimpleItemRecyclerViewAdapter(this, DummyContent.ITEMS, twoPane)
+    override fun createPresenter(): NewsPresenter {
+        val remoteNewsRepo: NewsRemoteRepo = NewsRemoteRepoImpl()
+
+        val db = AppDatabase(this)
+
+        val localNewsRepo: NewsLocalRepo = NewsLocalRepoImpl(db.newsDao())
+        val newsRepo: NewsRepo = NewsRepoImpl(remoteNewsRepo, localNewsRepo)
+        return NewsPresenterImpl(newsRepo, AndroidSchedulers.mainThread())
     }
 
-    override fun createPresenter(): NewsPresenter? {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    private fun setupPermissions() {
+        val permission = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.INTERNET
+        )
+        if (permission != PackageManager.PERMISSION_GRANTED) {
+            Log.i(TAG, "Permission to record denied")
+            makeRequest()
+        }
+    }
+
+    private fun makeRequest() {
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.INTERNET),
+            INTERNET_REQUEST_CODE
+        )
+    }
+
+    override fun onStart() {
+        super.onStart()
+        setupPermissions()
     }
 
     override fun showNews(news: NewsResponse) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        item_list_view.adapter = SimpleItemRecyclerViewAdapter(this, news.articles, twoPane)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        if (menu != null) {
+            val inflater: MenuInflater = menuInflater
+            inflater.inflate(R.menu.menu_main, menu)
+            //Creates input field for the user search
+            setUpSearchMenuItem(menu)
+        }
+        return true
+    }
+
+    private fun setUpSearchMenuItem(menu: Menu) {
+        val searchManager: SearchManager =
+            (getSystemService(Context.SEARCH_SERVICE)) as SearchManager
+        val searchView: SearchView = ((menu.findItem(R.id.action_search)?.actionView)) as SearchView
+        val searchMenuItem: MenuItem = menu.findItem(R.id.action_search)
+
+        searchView.setSearchableInfo(searchManager.getSearchableInfo(componentName))
+        searchView.queryHint = getString(R.string.search_enter)
+        searchView.setOnQueryTextListener(DebouncingQueryTextListener(
+            this@ItemListActivity.lifecycle
+        ) { newText ->
+            newText?.let {
+                if (it.isEmpty()) {
+                    presenter.getNews
+                } else {
+                    presenter.queryTopHeadlines(it)
+                }
+            }
+        })
+        searchMenuItem.icon.setVisible(false, false)
+    }
+
+    internal class DebouncingQueryTextListener(
+        lifecycle: Lifecycle,
+        private val onDebouncingQueryTextChange: (String?) -> Unit
+    ) : SearchView.OnQueryTextListener {
+
+        var debouncePeriod: Long = 1250
+
+        private val coroutineScope = lifecycle.coroutineScope
+
+        private var searchJob: Job? = null
+
+        override fun onQueryTextSubmit(query: String?): Boolean {
+            return false
+        }
+
+        override fun onQueryTextChange(newText: String?): Boolean {
+            searchJob?.cancel()
+            searchJob = coroutineScope.launch {
+                newText?.let {
+                    delay(debouncePeriod)
+                    onDebouncingQueryTextChange(newText)
+                }
+            }
+            return false
+        }
     }
 
     override fun showLoading() {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+//        Log.d(TAG, "showLoading() returned: ")
+//        val progress = ProgressDialog(this)
+//        progress.setMessage("Test")
+//        progress.show()
     }
 
     override fun hideLoading() {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        Log.d(TAG, "hideLoading() returned: ")
     }
 
     override fun showError(error: String?) {
-        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+        Log.d(TAG, "showError() returned: $error")
     }
 }
